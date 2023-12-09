@@ -9,6 +9,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import classification_report, accuracy_score
 from sklearn.impute import SimpleImputer
+from sklearn.tree import DecisionTreeClassifier
 
 # A popular strategy in direct marketing is the telemarketing phonecalls; even if this kind of intervention is a low-cost alternative, the sucess of its implementation relies in the proper targeting of potential clients.
 #
@@ -43,16 +44,15 @@ from sklearn.impute import SimpleImputer
 # euribor3m: numerical Dayly Euro Interbank Offered Rate
 # nr.employed: numerical Number of employeed in the last quarter
 
+# Load the training data
+file_path_training = 'datasets/telemarketing.csv'
+training_data = pd.read_csv(file_path_training)
 
-def train_model():
-    # Load the training data
-    file_path_training = 'datasets/telemarketing.csv'
-    training_data = pd.read_csv(file_path_training)
-
+def train_model_logistic(data):
     # Preparing the data
     # Identifying categorical and numerical columns
-    categorical_cols = training_data.select_dtypes(include=['object']).columns
-    numerical_cols = training_data.select_dtypes(include=['int64', 'float64']).columns.drop('target')
+    categorical_cols = data.select_dtypes(include=['object']).columns
+    numerical_cols = data.select_dtypes(include=['int64', 'float64']).columns.drop('target')
 
     # Creating transformers for numerical and categorical data
     numerical_transformer = Pipeline(steps=[
@@ -73,8 +73,8 @@ def train_model():
         ])
 
     # Splitting data into training and testing sets
-    X = training_data.drop('target', axis=1)
-    y = training_data['target']
+    X = data.drop('target', axis=1)
+    y = data['target']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
     # Creating a logistic regression pipeline
@@ -91,3 +91,42 @@ def train_model():
 
     print("Accuracy:", accuracy)
     print("Classification Report:\n", report)
+
+
+def train_model_class_trees(data):
+    # Identifying categorical and numerical columns
+    categorical_cols = data.select_dtypes(include=['object']).columns
+    numerical_cols = data.select_dtypes(include=['int64', 'float64']).columns.drop('target')
+
+    # Preprocessors
+    numerical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='mean')),
+        ('scaler', StandardScaler())])
+
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))])
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numerical_transformer, numerical_cols),
+            ('cat', categorical_transformer, categorical_cols)])
+
+    # define test & split
+    X = data.drop('target', axis=1)
+    y = data['target']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+
+    # create and train model
+    tree_model = Pipeline(steps=[('preprocessor', preprocessor),
+                                 ('classifier', DecisionTreeClassifier(random_state=0))])
+    tree_model.fit(X_train, y_train)
+
+    # evaluate the model
+    y_pred_tree = tree_model.predict(X_test)
+    accuracy_tree = accuracy_score(y_test, y_pred_tree)
+    report_tree = classification_report(y_test, y_pred_tree)
+
+    print("Accuracy:", accuracy_tree)
+    print("Classification Report:\n", report_tree)
+

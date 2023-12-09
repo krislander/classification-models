@@ -1,14 +1,14 @@
-import os
-
-import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, roc_curve, auc
 from sklearn.impute import SimpleImputer
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+import matplotlib.pyplot as plt
 
 # A popular strategy in direct marketing is the telemarketing phonecalls; even if this kind of intervention is a low-cost alternative, the sucess of its implementation relies in the proper targeting of potential clients.
 #
@@ -43,16 +43,16 @@ from sklearn.impute import SimpleImputer
 # euribor3m: numerical Dayly Euro Interbank Offered Rate
 # nr.employed: numerical Number of employeed in the last quarter
 
+# Load the training data
+file_path_training = 'datasets/telemarketing.csv'
+training_data = pd.read_csv(file_path_training)
 
-def train_model():
-    # Load the training data
-    file_path_training = 'datasets/telemarketing.csv'
-    training_data = pd.read_csv(file_path_training)
 
+def create_preprocessor(data):
     # Preparing the data
     # Identifying categorical and numerical columns
-    categorical_cols = training_data.select_dtypes(include=['object']).columns
-    numerical_cols = training_data.select_dtypes(include=['int64', 'float64']).columns.drop('target')
+    categorical_cols = data.select_dtypes(include=['object']).columns
+    numerical_cols = data.select_dtypes(include=['int64', 'float64']).columns.drop('target')
 
     # Creating transformers for numerical and categorical data
     numerical_transformer = Pipeline(steps=[
@@ -72,9 +72,33 @@ def train_model():
             ('cat', categorical_transformer, categorical_cols)
         ])
 
+    return preprocessor
+
+
+def create_roc_curve(y_test, y_scores, y_model, model_name):
+    fpr, tpr, _ = roc_curve(y_test, y_scores)
+    roc_auc = auc(fpr, tpr)
+
+    # Plot the ROC curves
+    plt.figure(figsize=(10, 8))
+    plt.plot(fpr, tpr, color='blue', lw=2, label=model_name % roc_auc)
+
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic')
+    plt.legend(loc='lower right')
+    plt.show()
+
+
+def train_model_logistic(data):
+    preprocessor = create_preprocessor(data)
+
     # Splitting data into training and testing sets
-    X = training_data.drop('target', axis=1)
-    y = training_data['target']
+    X = data.drop('target', axis=1)
+    y = data['target']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
 
     # Creating a logistic regression pipeline
@@ -91,3 +115,78 @@ def train_model():
 
     print("Accuracy:", accuracy)
     print("Classification Report:\n", report)
+
+    # ROC curve
+    y_scores_svm = model.predict_proba(X_test)[:, 1]
+
+    # Compute ROC curve and ROC area for each model
+    fpr_lr, tpr_lr, _ = roc_curve(y_test, y_scores_svm)
+    roc_auc_lr = auc(fpr_lr, tpr_lr)
+
+    create_roc_curve(y_test, y_scores_svm, model, 'Logistic Regression (AUC = %0.2f)')
+
+def train_model_class_trees(data):
+    preprocessor = create_preprocessor(data)
+
+    # define test & split
+    X = data.drop('target', axis=1)
+    y = data['target']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+
+    # create and train model
+    tree_model = Pipeline(steps=[('preprocessor', preprocessor),
+                                 ('classifier', DecisionTreeClassifier(random_state=0))])
+    tree_model.fit(X_train, y_train)
+
+    # evaluate the model
+    y_pred_tree = tree_model.predict(X_test)
+    accuracy_tree = accuracy_score(y_test, y_pred_tree)
+    report_tree = classification_report(y_test, y_pred_tree)
+
+    print("Accuracy:", accuracy_tree)
+    print("Classification Report:\n", report_tree)
+
+    # ROC curve
+    y_scores_svm = tree_model.predict_proba(X_test)[:, 1]
+
+    # Compute ROC curve and ROC area for each model
+    fpr_lr, tpr_lr, _ = roc_curve(y_test, y_scores_svm)
+    roc_auc_lr = auc(fpr_lr, tpr_lr)
+
+    create_roc_curve(y_test, y_scores_svm, tree_model, 'Decision Tree (AUC = %0.2f)')
+
+
+def train_model_svm(data):
+    preprocessor = create_preprocessor(data)
+
+    # define test & split
+    X = data.drop('target', axis=1)
+    y = data['target']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=0)
+
+    svm_model = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', SVC(probability=True, random_state=0))
+    ])
+    svm_model.fit(X_train, y_train)
+
+    y_pred_svm = svm_model.predict(X_test)
+    accuracy_svm = accuracy_score(y_test, y_pred_svm)
+    report_svm = classification_report(y_test, y_pred_svm)
+
+    print("Accuracy of SVM Model:", accuracy_svm)
+    print("Classification Report:\n", report_svm)
+
+    # ROC curve
+    y_scores_svm = svm_model.decision_function(X_test)
+
+    # Compute ROC curve and ROC area for each model
+    fpr_lr, tpr_lr, _ = roc_curve(y_test, y_scores_svm)
+    roc_auc_lr = auc(fpr_lr, tpr_lr)
+
+    create_roc_curve(y_test, y_scores_svm, svm_model, 'SVM (AUC = %0.2f)')
+
+# add them all to one plot
+train_model_logistic(training_data)
+train_model_class_trees(training_data)
+train_model_svm(training_data)
